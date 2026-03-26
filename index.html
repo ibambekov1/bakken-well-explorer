@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bakken Well Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+:root{--bg:#0a0e14;--panel:#111820;--card:#161e28;--card-h:#1c2636;--bdr:rgba(255,255,255,0.08);--bdr2:rgba(255,255,255,0.15);--t1:#e6edf3;--t2:#8b9eb0;--t3:#5a6d80;--grn:#2dd47a;--blu:#4da6ff;--amb:#f0a030;--red:#f05050}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--t1);height:100vh;overflow:hidden}
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+.hdr{background:var(--panel);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:100}
+.hdr-l{display:flex;align-items:center;gap:12px}
+.logo{width:30px;height:30px;background:linear-gradient(135deg,#2dd47a,#1a8a4a);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:#fff}
+.hdr h1{font-size:15px;font-weight:600;letter-spacing:-0.3px}
+.hdr h1 span{color:var(--t3);font-weight:400}
+.hdr-stats{display:flex;gap:20px;font-size:12px}
+.stat{display:flex;align-items:center;gap:5px}
+.sv{font-family:'JetBrains Mono',monospace;font-weight:500;color:var(--grn)}
+.sl{color:var(--t3)}
+.main{position:relative;overflow:hidden}
+.map-c{position:relative;width:100%;height:100%;background:#0d1117;overflow:hidden;cursor:grab}
+.map-c:active{cursor:grabbing}
+.map-cv{width:100%;height:100%}
+.legend{position:absolute;bottom:16px;left:16px;background:rgba(17,24,32,0.92);backdrop-filter:blur(12px);border:1px solid var(--bdr);border-radius:10px;padding:12px 14px;max-height:320px;overflow-y:auto;z-index:50;min-width:210px}
+.legend::-webkit-scrollbar{width:4px}.legend::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px}
+.leg-t{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin-bottom:8px}
+.leg-i{display:flex;align-items:center;gap:7px;padding:3px 0;font-size:11px;color:var(--t2);cursor:pointer;transition:color .15s}
+.leg-i:hover{color:var(--t1)}.leg-i.active-filter{color:var(--t1);font-weight:600}
+.leg-d{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.leg-c{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--t3)}
+.m-ctrl{position:absolute;top:14px;right:14px;display:flex;flex-direction:column;gap:3px;z-index:50}
+.m-btn{width:34px;height:34px;background:rgba(17,24,32,0.9);border:1px solid var(--bdr);border-radius:7px;color:var(--t2);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.m-btn:hover{background:var(--card-h);color:var(--t1)}
+.srch{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;background:rgba(17,24,32,0.92);backdrop-filter:blur(12px);border:1px solid var(--bdr);border-radius:9px;padding:0 12px;width:340px}
+.srch input{background:none;border:none;color:var(--t1);font-family:'DM Sans',sans-serif;font-size:12px;padding:9px 7px;width:100%;outline:none}
+.srch input::placeholder{color:var(--t3)}
+.si{color:var(--t3);font-size:13px}
+.wp{position:absolute;top:0;right:0;width:460px;height:100%;background:var(--panel);border-left:1px solid var(--bdr);z-index:80;transform:translateX(100%);transition:transform .35s cubic-bezier(.22,1,.36,1);overflow-y:auto;overflow-x:hidden}
+.wp.open{transform:translateX(0)}
+.wp::-webkit-scrollbar{width:5px}.wp::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:3px}
+.ph{position:sticky;top:0;background:var(--panel);border-bottom:1px solid var(--bdr);padding:14px 18px;z-index:10}
+.pc{position:absolute;top:12px;right:12px;width:26px;height:26px;background:var(--card);border:1px solid var(--bdr);border-radius:5px;color:var(--t2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;transition:all .15s}
+.pc:hover{background:var(--card-h);color:var(--t1)}
+.wn{font-size:16px;font-weight:600;margin-bottom:3px;padding-right:36px}
+.wop{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:5px}
+.wop .od{width:7px;height:7px;border-radius:50%}
+.pb{padding:0 18px 24px}
+.st{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--t3);margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--bdr)}
+.st:first-child{border-top:none;padding-top:0;margin-top:14px}
+.ig{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.ic{background:var(--card);border-radius:7px;padding:9px 11px}
+.ic.full{grid-column:1/-1}
+.il{font-size:10px;color:var(--t3);margin-bottom:2px}
+.iv{font-size:12px;font-weight:500;font-family:'JetBrains Mono',monospace}
+.iv.g{color:var(--grn)}.iv.b{color:var(--blu)}.iv.a{color:var(--amb)}
+.dc{width:100%;height:300px;background:var(--card);border-radius:9px;overflow:hidden;position:relative;border:1px solid var(--bdr)}
+.dl{position:absolute;top:8px;left:10px;font-size:10px;color:var(--t3);z-index:5;font-family:'JetBrains Mono',monospace}
+.cc{background:var(--card);border-radius:9px;padding:14px;border:1px solid var(--bdr)}
+.cw{position:relative;height:190px}
+.ps{display:flex;gap:14px;margin-bottom:12px}
+.pst{flex:1}
+.psl{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
+.psv{font-size:16px;font-weight:600;font-family:'JetBrains Mono',monospace}
+.svt{width:100%;border-collapse:collapse;font-size:11px}
+.svt th{text-align:left;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);padding:5px 7px;border-bottom:1px solid var(--bdr)}
+.svt td{padding:4px 7px;font-family:'JetBrains Mono',monospace;color:var(--t2);border-bottom:1px solid rgba(255,255,255,0.03)}
+.svt tr:hover td{color:var(--t1);background:rgba(255,255,255,0.02)}
+.tt{position:absolute;pointer-events:none;background:rgba(17,24,32,0.95);backdrop-filter:blur(8px);border:1px solid var(--bdr2);border-radius:7px;padding:9px 12px;font-size:11px;z-index:90;display:none;min-width:190px}
+.tt .tn{font-weight:600;font-size:12px;margin-bottom:3px}
+.tt .tr{display:flex;justify-content:space-between;gap:14px;padding:1px 0}
+.tt .tl{color:var(--t3)}.tt .tv{font-family:'JetBrains Mono',monospace;color:var(--t2)}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:500}
+.b-a{background:rgba(45,212,122,0.12);color:var(--grn)}
+.b-i{background:rgba(240,80,80,0.12);color:var(--red)}
+.loader{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(10,14,20,0.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;gap:14px}
+.spinner{width:36px;height:36px;border:3px solid var(--bdr);border-top-color:var(--grn);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ltxt{color:var(--t2);font-size:13px;font-family:'JetBrains Mono',monospace}
+.ltxt2{color:var(--t3);font-size:11px;text-align:center;max-width:400px;line-height:1.6}
+.mode-label{position:absolute;bottom:16px;right:16px;background:rgba(17,24,32,0.9);border:1px solid var(--bdr);border-radius:6px;padding:6px 10px;font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace;z-index:50}
+.mode-label a{color:var(--grn);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <div class="hdr-l">
+      <div class="logo">BK</div>
+      <h1>Bakken well explorer <span>/ Williston Basin</span></h1>
+    </div>
+    <div class="hdr-stats">
+      <div class="stat"><span class="sv" id="wc">—</span><span class="sl">Hz wells</span></div>
+      <div class="stat"><span class="sv" id="oc">—</span><span class="sl">Operators</span></div>
+      <div class="stat"><span class="sv" id="cc">—</span><span class="sl">Counties</span></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="map-c" id="mc">
+      <canvas class="map-cv" id="cv"></canvas>
+      <div class="srch"><span class="si">&#128269;</span><input type="text" placeholder="Search well name, API, or operator..." id="si"></div>
+      <div class="m-ctrl">
+        <button class="m-btn" onclick="zoomMap(1.3)">+</button>
+        <button class="m-btn" onclick="zoomMap(0.7)">−</button>
+        <button class="m-btn" onclick="resetMap()">⟲</button>
+      </div>
+      <div class="legend" id="leg"></div>
+      <div class="tt" id="tip"></div>
+      <div class="mode-label" id="modeLabel"></div>
+      <div class="loader" id="loader">
+        <div class="spinner"></div>
+        <div class="ltxt" id="loadText">Loading...</div>
+        <div class="ltxt2" id="loadSub"></div>
+      </div>
+    </div>
+    <div class="wp" id="wp">
+      <div class="ph">
+        <button class="pc" onclick="closePanel()">✕</button>
+        <div class="wn" id="pwn"></div>
+        <div class="wop" id="pop"></div>
+      </div>
+      <div class="pb" id="ppb"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================
+//  BAKKEN WELL EXPLORER
+//  Reads GeoJSON exported from NDIC shapefiles via mapshaper.org
+//  No Python / Node required — pure HTML + JS
+// =============================================================
+
+// ----- CONFIGURATION -----
+// Change these paths if you name your files differently
+const DATA_FILES = {
+  horizontals: 'data/horizontals.json',   // OGD_Horizontals → GeoJSON
+  laterals:    'data/laterals.json',      // OGD_Horizontals_Line → GeoJSON
+  directionals:'data/directionals.json',  // OGD_Directionals → GeoJSON (optional)
+};
+
+// ----- OPERATOR NORMALIZATION -----
+// NDIC uses legal entity names — this maps them to common names
+const OP_ALIASES = {
+  'CHORD ENERGY':'Chord Energy','ENERPLUS':'Chord Energy','OASIS PETROLEUM':'Chord Energy',
+  'HESS':'Hess Corporation','CONTINENTAL RESOURCES':'Continental Resources',
+  'DEVON ENERGY':'Devon Energy','GRAYSON MILL':'Devon Energy',
+  'CONOCOPHILLIPS':'ConocoPhillips','BURLINGTON RESOURCES':'ConocoPhillips',
+  'WHITING':'Whiting Petroleum','MARATHON OIL':'Marathon Oil',
+  'EOG RESOURCES':'EOG Resources','OVINTIV':'Ovintiv','XTO ENERGY':'XTO Energy',
+  'EXXON MOBIL':'ExxonMobil','KRAKEN':'Kraken Oil & Gas','PETRO-HUNT':'Petro-Hunt',
+  'SLAWSON':'Slawson Exploration','LIME ROCK':'Lime Rock Resources',
+  'EMERALD BAY':'Emerald Bay Energy','EQUINOR':'Equinor',
+  'HEADINGTON':'Headington Oil','ZAVANNA':'Zavanna',
+  'NORTHERN OIL':'Northern Oil & Gas','MUREX':'Murex Petroleum',
+};
+
+const BAKKEN_POOLS = ['BAKKEN','THREE FORKS','SANISH','PRONGHORN','LODGEPOLE'];
+const PALETTE = [
+  '#4da6ff','#2dd47a','#f0a030','#f05050','#b366ff','#ff6b9d',
+  '#00d4aa','#ffcc00','#ff8844','#66bbff','#ee77aa','#88dd55',
+  '#44ddcc','#dd6644','#aa88ff','#ff9966','#66cc99','#cc6699',
+  '#99cc66','#6699cc','#77bbdd','#ddaa44',
+];
+
+// ----- STATE -----
+let wells = [];
+let lateralGeoms = {};
+let surveyData = {};
+let opColors = {};
+let dataMode = 'demo';
+
+const MS = { cLat:48.05, cLon:-103.35, zoom:1, drag:false, lx:0, ly:0, ppd:600, sel:null, hov:null, filtOp:null, _sx:0, _sy:0 };
+
+// ----- HELPERS -----
+function normOp(raw) {
+  if (!raw) return 'Unknown';
+  const u = raw.trim().toUpperCase();
+  for (const [key, val] of Object.entries(OP_ALIASES)) {
+    if (u.includes(key)) return val;
+  }
+  // Title-case fallback
+  return raw.trim().replace(/\b\w+/g, w => w[0].toUpperCase() + w.slice(1).toLowerCase())
+    .replace(/Llc|Inc|Ltd|Corp|L\.?p\.?/gi, s => s.toUpperCase())
+    .replace(/\s+/g, ' ');
+}
+
+function isBakken(props) {
+  const pool = (props.POOL || props.Pool || props.pool || '').toUpperCase();
+  const form = (props.FORMATION || props.Formation || props.formation || '').toUpperCase();
+  return BAKKEN_POOLS.some(b => pool.includes(b) || form.includes(b));
+}
+
+function getProp(props, ...keys) {
+  for (const k of keys) {
+    // Try exact, uppercase, title case
+    const val = props[k] || props[k.toUpperCase()] || props[k.toLowerCase()];
+    if (val !== undefined && val !== null && val !== '') return val;
+  }
+  return null;
+}
+
+function extractYear(val) {
+  if (!val) return null;
+  const s = String(val);
+  const m = s.match(/(\d{4})/);
+  return m ? parseInt(m[1]) : null;
+}
+
+function num(v) { const n = parseFloat(v); return isNaN(n) ? null : n; }
+function int(v) { const n = num(v); return n === null ? null : Math.round(n); }
+
+// ----- GEOJSON LOADER -----
+async function loadGeoJSON(url) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+  return await resp.json();
+}
+
+function processHorizontals(geojson) {
+  const features = geojson.features || [];
+  const out = [];
+
+  for (const f of features) {
+    const p = f.properties || {};
+    const geom = f.geometry;
+
+    // Filter to Bakken/Three Forks
+    if (!isBakken(p)) continue;
+
+    // Get coordinates from geometry
+    let lat, lon;
+    if (geom && geom.type === 'Point') {
+      lon = geom.coordinates[0];
+      lat = geom.coordinates[1];
+    } else {
+      lat = num(getProp(p, 'LATITUDE', 'Latitude', 'LAT', 'lat'));
+      lon = num(getProp(p, 'LONGITUDE', 'Longitude', 'LON', 'lon', 'LONG'));
+    }
+    if (!lat || !lon) continue;
+
+    const fileNo = getProp(p, 'NDIC_FILE_', 'NDIC_FILE', 'FILE_NO', 'FileNumber', 'FILE_NUMBER', 'OBJECTID');
+    const api = getProp(p, 'API_NO', 'API', 'ApiNumber', 'API_NUMBER') || '';
+    const wellName = getProp(p, 'WELL_NAME', 'WellName', 'WELLNAME') || '';
+    const operator = normOp(getProp(p, 'OPERATOR', 'Operator', 'CURR_OPER'));
+    const status = getProp(p, 'WELL_STATU', 'WellStatus', 'STATUS', 'Status') || '';
+    const county = getProp(p, 'COUNTY', 'County') || '';
+    const field = getProp(p, 'FIELD', 'Field') || '';
+    const formation = getProp(p, 'FORMATION', 'Formation') || '';
+    const pool = getProp(p, 'POOL', 'Pool') || '';
+    const tvd = int(getProp(p, 'TVD', 'Tvd'));
+    const md = int(getProp(p, 'TOTAL_DEPT', 'TotalDepth', 'TD', 'DEPTH'));
+    const latLen = int(getProp(p, 'LATERAL_LE', 'LateralLength', 'LAT_LENGTH'));
+    const bhLat = num(getProp(p, 'BH_LATITUD', 'BHLatitude', 'BH_LAT'));
+    const bhLon = num(getProp(p, 'BH_LONGITU', 'BHLongitude', 'BH_LON', 'BH_LONG'));
+    const spud = getProp(p, 'SPUD_DATE', 'SpudDate', 'SPUD');
+    const comp = getProp(p, 'COMP_DATE', 'CompDate', 'COMPLETION', 'COMP');
+    const firstProd = getProp(p, 'FIRST_PROD', 'FirstProduction');
+    const cumOil = int(getProp(p, 'CUM_OIL', 'CumOil'));
+    const cumGas = int(getProp(p, 'CUM_GAS', 'CumGas'));
+    const cumWater = int(getProp(p, 'CUM_WATER', 'CumWater'));
+    const ipOil = int(getProp(p, 'IP_OIL', 'IpOil', 'IP_OIL_BB'));
+    const ipGas = int(getProp(p, 'IP_GAS', 'IpGas'));
+    const ipWater = int(getProp(p, 'IP_WATER', 'IpWater'));
+    const twp = getProp(p, 'TOWNSHIP', 'Township') || '';
+    const rng = getProp(p, 'RANGE', 'Range') || '';
+    const sec = getProp(p, 'SECTION', 'Section') || '';
+
+    const id = String(fileNo || api || out.length);
+
+    out.push({
+      id, name: wellName, api: String(api), operator, status, county, field,
+      formation, pool, lat, lon, bhLat, bhLon, tvd, md,
+      lateralLength: latLen, spudDate: spud ? String(spud) : null,
+      compDate: comp ? String(comp) : null, firstProd: firstProd ? String(firstProd) : null,
+      yearDrilled: extractYear(spud) || extractYear(comp),
+      cumOil, cumGas, cumWater, ipOil, ipGas, ipWater,
+      township: twp, range: rng, section: sec,
+    });
+  }
+  return out;
+}
+
+function processLaterals(geojson) {
+  const map = {};
+  for (const f of (geojson.features || [])) {
+    const p = f.properties || {};
+    const geom = f.geometry;
+    const id = String(getProp(p, 'NDIC_FILE_', 'NDIC_FILE', 'FILE_NO', 'FileNumber', 'OBJECTID') || '');
+    if (!id || !geom) continue;
+    let coords = [];
+    if (geom.type === 'LineString') coords = geom.coordinates;
+    else if (geom.type === 'MultiLineString') coords = geom.coordinates.flat();
+    if (coords.length > 1) {
+      map[id] = coords.map(c => [c[1], c[0]]); // [lat, lon]
+    }
+  }
+  return map;
+}
+
+function processDirectionals(geojson) {
+  const map = {};
+  for (const f of (geojson.features || [])) {
+    const p = f.properties || {};
+    const geom = f.geometry;
+    const id = String(getProp(p, 'NDIC_FILE_', 'NDIC_FILE', 'FILE_NO', 'FileNumber') || '');
+    if (!id) continue;
+    if (!map[id]) map[id] = [];
+    const pt = {
+      md: num(getProp(p, 'MD', 'MEAS_DEPTH', 'MeasuredDepth')),
+      tvd: num(getProp(p, 'TVD', 'TRUE_VERT_', 'TrueVerticalDepth')),
+      inc: num(getProp(p, 'INC', 'INCLINATIO', 'Inclination')),
+      azi: num(getProp(p, 'AZI', 'AZIMUTH', 'Azimuth')),
+    };
+    if (geom && geom.type === 'Point') { pt.lat = geom.coordinates[1]; pt.lon = geom.coordinates[0]; }
+    map[id].push(pt);
+  }
+  for (const id in map) map[id].sort((a, b) => (a.md || 0) - (b.md || 0));
+  return map;
+}
+
+// ----- DEMO DATA -----
+function generateDemoWells(count) {
+  const OPS = ['Chord Energy','Hess Corporation','Continental Resources','Devon Energy','ConocoPhillips','Whiting Petroleum','Marathon Oil','EOG Resources','Ovintiv','Kraken Oil & Gas','Petro-Hunt','Slawson Exploration'];
+  const CTS = ['McKenzie','Mountrail','Williams','Dunn','Divide','Burke','Stark','Billings'];
+  const FMS = ['Middle Bakken','Three Forks','Upper Bakken Shale','Sanish/Pronghorn'];
+  const cores = [{lat:48.15,lon:-103.3,r:.4,w:.35},{lat:48.4,lon:-102.8,r:.35,w:.25},{lat:48.55,lon:-103.8,r:.3,w:.15},{lat:47.55,lon:-103.5,r:.35,w:.15},{lat:47.85,lon:-103.1,r:.25,w:.1}];
+  const names = ['Eagle','Hawk','Buffalo','Thunder','Prairie','Antelope','Coyote','Falcon','Mustang','Bear'];
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    let r = Math.random(), cW = 0, area = cores[0];
+    for (const a of cores) { cW += a.w; if (r < cW) { area = a; break; } }
+    const ang = Math.random()*Math.PI*2, dist = Math.sqrt(Math.random())*area.r;
+    const lat = area.lat+Math.cos(ang)*dist, lon = area.lon+Math.sin(ang)*dist*1.4;
+    const op = OPS[i%OPS.length], yr = 2006+Math.floor(Math.random()*20);
+    const dir = Math.random()*360, latLen = 7500+Math.random()*12500;
+    const tvd = 9800+Math.floor(Math.random()*1400), md = tvd+Math.floor(latLen)+Math.floor(Math.random()*800);
+    const ip = Math.floor(400+Math.random()*2200);
+    const radDir = dir*Math.PI/180, lenDeg = latLen/364000;
+    out.push({
+      id:String(i), name:`${names[i%10]} ${Math.floor(Math.random()*40+1)}-${Math.floor(Math.random()*36+1)}H`,
+      api:`33-${String(Math.floor(Math.random()*99+1)).padStart(3,'0')}-${String(Math.floor(Math.random()*99999+1)).padStart(5,'0')}`,
+      operator:op, status:'A', county:CTS[Math.floor(Math.random()*CTS.length)],
+      field:'', formation:FMS[Math.floor(Math.random()*FMS.length)], pool:'BAKKEN POOL',
+      lat, lon, bhLat:lat+Math.cos(radDir)*lenDeg, bhLon:lon+Math.sin(radDir)*lenDeg/Math.cos(lat*Math.PI/180),
+      tvd, md, lateralLength:Math.floor(latLen), lateralDir:Math.round(dir),
+      yearDrilled:yr, spudDate:`${yr}-06-15`, compDate:`${yr}-09-01`, firstProd:null,
+      cumOil:Math.floor(ip*30*(2026-yr)*0.2), cumGas:Math.floor(ip*30*(2026-yr)*0.2*1.1),
+      cumWater:Math.floor(ip*30*(2026-yr)*0.2*0.8),
+      ipOil:ip, ipGas:Math.floor(ip*0.9), ipWater:Math.floor(ip*0.25),
+      township:'', range:'', section:'',
+    });
+  }
+  return out;
+}
+
+// ----- DATA LOADING -----
+async function loadData() {
+  const lt = document.getElementById('loadText');
+  const ls = document.getElementById('loadSub');
+
+  try {
+    // 1. Load horizontals (required)
+    lt.textContent = 'Loading horizontal wells...';
+    ls.textContent = 'Reading data/horizontals.json';
+    const hzGeo = await loadGeoJSON(DATA_FILES.horizontals);
+    lt.textContent = 'Processing wells...';
+    wells = processHorizontals(hzGeo);
+    if (wells.length === 0) throw new Error('No Bakken wells found in GeoJSON');
+    dataMode = 'live';
+    lt.textContent = `Found ${wells.length.toLocaleString()} Bakken wells`;
+
+    // 2. Load laterals (optional)
+    try {
+      ls.textContent = 'Reading data/laterals.json';
+      const latGeo = await loadGeoJSON(DATA_FILES.laterals);
+      lateralGeoms = processLaterals(latGeo);
+      lt.textContent = `${wells.length.toLocaleString()} wells + ${Object.keys(lateralGeoms).length.toLocaleString()} laterals`;
+    } catch(e) { console.log('No laterals file:', e.message); }
+
+    // 3. Load directionals (optional)
+    try {
+      ls.textContent = 'Reading data/directionals.json';
+      const dirGeo = await loadGeoJSON(DATA_FILES.directionals);
+      surveyData = processDirectionals(dirGeo);
+    } catch(e) { console.log('No directionals file:', e.message); }
+
+  } catch (e) {
+    console.log('GeoJSON not found, using demo data:', e.message);
+    lt.textContent = 'Using demo data';
+    ls.innerHTML = 'To use real NDIC data:<br>1. Export shapefiles as GeoJSON at <a href="https://mapshaper.org" target="_blank" style="color:var(--grn)">mapshaper.org</a><br>2. Save to data/horizontals.json, data/laterals.json<br>3. Refresh this page';
+    dataMode = 'demo';
+    wells = generateDemoWells(850);
+    await new Promise(r => setTimeout(r, 2500)); // let user read instructions
+  }
+
+  // Attach laterals + compute endpoints
+  for (const w of wells) {
+    if (lateralGeoms[w.id]) w.lateral = lateralGeoms[w.id];
+    if (w.lateral && w.lateral.length > 1) {
+      w.endLat = w.lateral[w.lateral.length-1][0];
+      w.endLon = w.lateral[w.lateral.length-1][1];
+    } else if (w.bhLat && w.bhLon) {
+      w.endLat = w.bhLat; w.endLon = w.bhLon;
+    } else {
+      const dir = (w.lateralDir || Math.random()*360) * Math.PI/180;
+      const len = (w.lateralLength || 10000) / 364000;
+      w.endLat = w.lat + Math.cos(dir)*len;
+      w.endLon = w.lon + Math.sin(dir)*len / Math.cos(w.lat*Math.PI/180);
+    }
+    w.hasSurvey = !!surveyData[w.id];
+  }
+
+  // Build operator colors
+  const counts = {};
+  wells.forEach(w => { counts[w.operator] = (counts[w.operator]||0)+1; });
+  const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]);
+  sorted.forEach(([op,cnt],i) => { opColors[op] = { color: PALETTE[i%PALETTE.length], count: cnt }; });
+  wells.forEach(w => { w.color = opColors[w.operator]?.color || '#666'; });
+
+  // Update header
+  document.getElementById('wc').textContent = wells.length.toLocaleString();
+  document.getElementById('oc').textContent = Object.keys(opColors).length;
+  document.getElementById('cc').textContent = [...new Set(wells.map(w=>w.county).filter(Boolean))].length;
+  document.getElementById('modeLabel').innerHTML = dataMode==='live'
+    ? `NDIC data / <a href="https://gis.dmr.nd.gov/gisdownload.asp" target="_blank">source</a>`
+    : 'Demo data';
+
+  buildLegend();
+  document.getElementById('loader').style.display = 'none';
+  drawMap();
+}
+
+// ----- MAP -----
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('mc');
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio||1;
+  canvas.width = container.clientWidth*dpr; canvas.height = container.clientHeight*dpr;
+  canvas.style.width = container.clientWidth+'px'; canvas.style.height = container.clientHeight+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function ll2s(lat,lon) {
+  const ppd=MS.ppd*MS.zoom, cx=container.clientWidth/2, cy=container.clientHeight/2;
+  return { x: cx+(lon-MS.cLon)*ppd, y: cy-(lat-MS.cLat)*ppd*0.7 };
+}
+
+function drawMap() {
+  const w=container.clientWidth, h=container.clientHeight;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle='#0a100f'; ctx.fillRect(0,0,w,h);
+  const ppd = MS.ppd*MS.zoom;
+
+  // Grid
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=0.5;
+  for (let lat=46;lat<=50;lat+=0.5) {
+    const p=ll2s(lat,-105),p2=ll2s(lat,-101);
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    if(MS.zoom>0.8){ctx.fillStyle='rgba(255,255,255,0.15)';ctx.font='10px JetBrains Mono';ctx.fillText(`${lat.toFixed(1)}°N`,p.x+4,p.y-3);}
+  }
+  for (let lon=-105;lon<=-101;lon+=0.5) {
+    const p=ll2s(50,lon),p2=ll2s(46,lon);
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();
+    if(MS.zoom>0.8){ctx.fillStyle='rgba(255,255,255,0.15)';ctx.font='10px JetBrains Mono';ctx.fillText(`${Math.abs(lon).toFixed(1)}°W`,p.x+3,p2.y+12);}
+  }
+  if (MS.zoom>1.5) {
+    ctx.strokeStyle='rgba(255,255,255,0.02)';
+    for(let lat=46;lat<=50;lat+=1/6){const p=ll2s(lat,-105),p2=ll2s(lat,-101);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+    for(let lon=-105;lon<=-101;lon+=1/6){const p=ll2s(50,lon),p2=ll2s(46,lon);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();}
+  }
+
+  // County outlines
+  const cBnds=[{n:'McKenzie',p:[[47.7,-104.1],[47.7,-103.1],[48.5,-103.1],[48.5,-104.1]]},{n:'Mountrail',p:[[48,-102.9],[48,-102.2],[48.6,-102.2],[48.6,-102.9]]},{n:'Williams',p:[[48.3,-104.1],[48.3,-103.2],[48.9,-103.2],[48.9,-104.1]]},{n:'Dunn',p:[[47.1,-103.9],[47.1,-103.1],[47.7,-103.1],[47.7,-103.9]]}];
+  ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.lineWidth=1;ctx.setLineDash([6,4]);
+  for(const c of cBnds){ctx.beginPath();c.p.forEach((pt,i)=>{const s=ll2s(pt[0],pt[1]);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y)});ctx.closePath();ctx.stroke();
+    if(MS.zoom>0.6){const cn=ll2s(c.p.reduce((s,p)=>s+p[0],0)/c.p.length,c.p.reduce((s,p)=>s+p[1],0)/c.p.length);ctx.fillStyle='rgba(255,255,255,0.12)';ctx.font='600 11px DM Sans';ctx.textAlign='center';ctx.fillText(c.n.toUpperCase(),cn.x,cn.y);ctx.textAlign='start';}}
+  ctx.setLineDash([]);
+
+  // Wells
+  for (const well of wells) {
+    if (MS.filtOp && well.operator !== MS.filtOp) continue;
+    const p = ll2s(well.lat, well.lon);
+    if (p.x<-20||p.x>w+20||p.y<-20||p.y>h+20) continue;
+    const isSel = MS.sel===well.id, isHov = MS.hov===well.id;
+
+    // Lateral line
+    if (well.lateral && well.lateral.length>1 && MS.zoom>0.5) {
+      ctx.strokeStyle=well.color; ctx.globalAlpha=isSel?1:isHov?.9:.45; ctx.lineWidth=isSel?2.5:isHov?2:1;
+      ctx.beginPath();
+      well.lateral.forEach((pt,i)=>{const s=ll2s(pt[0],pt[1]);i?ctx.lineTo(s.x,s.y):ctx.moveTo(s.x,s.y);});
+      ctx.stroke();
+    } else if (well.endLat && well.endLon) {
+      const ep=ll2s(well.endLat,well.endLon);
+      ctx.strokeStyle=well.color; ctx.globalAlpha=isSel?1:isHov?.9:.5; ctx.lineWidth=isSel?2.5:isHov?2:1.1;
+      ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(ep.x,ep.y);ctx.stroke();
+    }
+
+    // Surface dot
+    ctx.fillStyle=well.color; ctx.globalAlpha=isSel?1:isHov?1:.65;
+    ctx.beginPath();ctx.arc(p.x,p.y,isSel?4:isHov?3.5:1.8,0,Math.PI*2);ctx.fill();
+    if (isSel){ctx.strokeStyle=well.color;ctx.lineWidth=1.5;ctx.globalAlpha=.6;ctx.beginPath();ctx.arc(p.x,p.y,8,0,Math.PI*2);ctx.stroke();}
+    ctx.globalAlpha=1;
+  }
+
+  // Labels when zoomed
+  if (MS.zoom>3) {
+    ctx.font='500 10px JetBrains Mono';
+    for(const well of wells){if(MS.filtOp&&well.operator!==MS.filtOp)continue;
+      const p=ll2s(well.lat,well.lon);if(p.x<-20||p.x>w+20||p.y<-20||p.y>h+20)continue;
+      ctx.fillStyle='rgba(255,255,255,0.5)';ctx.fillText((well.name||'').substring(0,18),p.x+6,p.y-5);}
+  }
+
+  // Scale bar
+  const scKm=20,scDeg=scKm/111,scPx=scDeg*ppd;
+  ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(w-140,h-30);ctx.lineTo(w-140+scPx,h-30);ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.4)';ctx.font='10px JetBrains Mono';ctx.fillText(`${scKm} km`,w-140,h-35);
+}
+
+// ----- LEGEND -----
+function buildLegend() {
+  const el = document.getElementById('leg');
+  let h = '<div class="leg-t">Operators</div>';
+  const sorted = Object.entries(opColors).sort((a,b)=>b[1].count-a[1].count);
+  for (const [name, d] of sorted) {
+    const esc = name.replace(/'/g, "\\'");
+    h += `<div class="leg-i" data-op="${esc}" onclick="filterOp('${esc}')"><div class="leg-d" style="background:${d.color}"></div><span>${name}</span><span class="leg-c">${d.count.toLocaleString()}</span></div>`;
+  }
+  h += '<div class="leg-i" onclick="filterOp(null)" style="margin-top:6px;color:var(--grn)"><span>Show all</span></div>';
+  el.innerHTML = h;
+}
+function filterOp(op) {
+  MS.filtOp = op;
+  document.querySelectorAll('.leg-i').forEach(el => {
+    el.classList.toggle('active-filter', el.dataset.op === op);
+  });
+  drawMap();
+}
+
+// ----- INTERACTIONS -----
+function findWell(sx,sy) {
+  let best=null, bd=Infinity;
+  for(const w of wells){if(MS.filtOp&&w.operator!==MS.filtOp)continue;
+    const p=ll2s(w.lat,w.lon);const d=Math.hypot(p.x-sx,p.y-sy);
+    if(d<12&&d<bd){bd=d;best=w;}}
+  return best;
+}
+canvas.addEventListener('mousedown',e=>{MS.drag=true;MS.lx=e.clientX;MS.ly=e.clientY;MS._sx=e.clientX;MS._sy=e.clientY;});
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  if(MS.drag){const dx=e.clientX-MS.lx,dy=e.clientY-MS.ly,ppd=MS.ppd*MS.zoom;
+    MS.cLon-=dx/ppd;MS.cLat+=dy/(ppd*0.7);MS.lx=e.clientX;MS.ly=e.clientY;drawMap();return;}
+  const w=findWell(sx,sy);
+  if(w){MS.hov=w.id;canvas.style.cursor='pointer';showTip(w,e.clientX,e.clientY);}
+  else{MS.hov=null;canvas.style.cursor='grab';hideTip();}
+  drawMap();
+});
+canvas.addEventListener('mouseup',e=>{
+  if(MS.drag&&Math.abs(e.clientX-MS._sx)<3&&Math.abs(e.clientY-MS._sy)<3){
+    const r=canvas.getBoundingClientRect();const w=findWell(e.clientX-r.left,e.clientY-r.top);
+    if(w){MS.sel=w.id;openPanel(w);drawMap();}}
+  MS.drag=false;
+});
+canvas.addEventListener('wheel',e=>{e.preventDefault();MS.zoom=Math.max(0.3,Math.min(15,MS.zoom*(e.deltaY>0?0.85:1.18)));drawMap();},{passive:false});
+function zoomMap(f){MS.zoom=Math.max(0.3,Math.min(15,MS.zoom*f));drawMap();}
+function resetMap(){MS.cLat=48.05;MS.cLon=-103.35;MS.zoom=1;drawMap();}
+
+// ----- TOOLTIP -----
+const tip = document.getElementById('tip');
+function showTip(w,x,y) {
+  tip.style.display='block'; tip.style.left=(x+15)+'px'; tip.style.top=(y-10)+'px';
+  const sl = w.status==='A'||w.status==='Active'?'Active':w.status==='IA'?'Inactive':w.status||'—';
+  tip.innerHTML=`<div class="tn">${w.name||'—'}</div>
+    <div class="tr"><span class="tl">Operator</span><span class="tv">${w.operator}</span></div>
+    <div class="tr"><span class="tl">API</span><span class="tv">${w.api||'—'}</span></div>
+    <div class="tr"><span class="tl">Formation</span><span class="tv">${w.formation||'—'}</span></div>
+    <div class="tr"><span class="tl">Year</span><span class="tv">${w.yearDrilled||'—'}</span></div>
+    <div class="tr"><span class="tl">IP oil</span><span class="tv">${(w.ipOil||0).toLocaleString()} bbl/d</span></div>
+    <div style="margin-top:4px;font-size:9px;color:var(--t3)">Click for details</div>`;
+}
+function hideTip(){tip.style.display='none';}
+
+// ----- SEARCH -----
+document.getElementById('si').addEventListener('input',e=>{
+  const q=e.target.value.toLowerCase();
+  if(q.length<2){MS.filtOp=null;drawMap();return;}
+  const m=wells.find(w=>(w.name||'').toLowerCase().includes(q)||(w.api||'').includes(q)||w.operator.toLowerCase().includes(q));
+  if(m){MS.cLat=m.lat;MS.cLon=m.lon;MS.zoom=5;MS.sel=m.id;openPanel(m);drawMap();}
+});
+
+// ----- DETAIL PANEL -----
+function closePanel(){document.getElementById('wp').classList.remove('open');MS.sel=null;drawMap();}
+
+function openPanel(w) {
+  document.getElementById('wp').classList.add('open');
+  document.getElementById('pwn').textContent = w.name||`Well ${w.id}`;
+  const stCls = (w.status==='A'||w.status==='Active')?'b-a':'b-i';
+  const stLbl = w.status==='A'?'Active':w.status==='IA'?'Inactive':w.status||'—';
+  document.getElementById('pop').innerHTML = `<div class="od" style="background:${w.color}"></div>${w.operator}<span class="badge ${stCls}">${stLbl}</span>`;
+
+  document.getElementById('ppb').innerHTML = `
+    <div class="st">Well header</div>
+    <div class="ig">
+      <div class="ic"><div class="il">API number</div><div class="iv">${w.api||'—'}</div></div>
+      <div class="ic"><div class="il">Year drilled</div><div class="iv b">${w.yearDrilled||'—'}</div></div>
+      <div class="ic"><div class="il">County</div><div class="iv">${w.county||'—'}</div></div>
+      <div class="ic"><div class="il">Formation</div><div class="iv g">${w.formation||'—'}</div></div>
+      <div class="ic"><div class="il">Surface lat/lon</div><div class="iv">${w.lat?.toFixed(5)||'—'}°, ${w.lon?.toFixed(5)||'—'}°</div></div>
+      <div class="ic"><div class="il">BH lat/lon</div><div class="iv">${(w.bhLat||w.endLat)?.toFixed(5)||'—'}°, ${(w.bhLon||w.endLon)?.toFixed(5)||'—'}°</div></div>
+      <div class="ic"><div class="il">TVD</div><div class="iv">${w.tvd?.toLocaleString()||'—'} ft</div></div>
+      <div class="ic"><div class="il">MD</div><div class="iv">${w.md?.toLocaleString()||'—'} ft</div></div>
+      <div class="ic"><div class="il">Lateral length</div><div class="iv a">${w.lateralLength?.toLocaleString()||'—'} ft</div></div>
+      <div class="ic"><div class="il">Spud date</div><div class="iv">${w.spudDate||'—'}</div></div>
+      <div class="ic"><div class="il">Completion</div><div class="iv">${w.compDate||'—'}</div></div>
+      <div class="ic"><div class="il">First production</div><div class="iv">${w.firstProd||'—'}</div></div>
+      ${w.field?`<div class="ic full"><div class="il">Field</div><div class="iv">${w.field}</div></div>`:''}
+      ${w.pool?`<div class="ic full"><div class="il">Pool</div><div class="iv">${w.pool}</div></div>`:''}
+      ${w.township?`<div class="ic"><div class="il">Twp/Rng/Sec</div><div class="iv">${w.township}-${w.range}-${w.section}</div></div>`:''}
+    </div>
+    <div class="st">Deviation survey (3D wellbore)</div>
+    <div class="dc" id="dv"></div>
+    <div class="st">Survey data</div>
+    <div style="max-height:200px;overflow-y:auto;border-radius:7px;border:1px solid var(--bdr)"><table class="svt" id="svtbl"></table></div>
+    <div class="st">Production profile</div>
+    <div class="cc">
+      <div class="ps">
+        <div class="pst"><div class="psl">IP oil (bbl/d)</div><div class="psv" style="color:var(--grn)">${(w.ipOil||0).toLocaleString()}</div></div>
+        <div class="pst"><div class="psl">Cum oil (bbl)</div><div class="psv" style="color:var(--grn)">${(w.cumOil||0).toLocaleString()}</div></div>
+        <div class="pst"><div class="psl">Cum gas (mcf)</div><div class="psv" style="color:var(--blu)">${(w.cumGas||0).toLocaleString()}</div></div>
+      </div>
+      <div class="cw"><canvas id="pch"></canvas></div>
+    </div>
+    <div class="st">GOR &amp; water cut</div>
+    <div class="cc"><div class="cw"><canvas id="gch"></canvas></div></div>`;
+
+  renderDeviation(w);
+  renderSurveyTable(w);
+  renderProdChart(w);
+  renderGORChart(w);
+}
+
+// ----- 3D DEVIATION -----
+function getDevData(w) {
+  if (surveyData[w.id] && surveyData[w.id].length > 3) return surveyData[w.id];
+  const pts=[], n=50, tvd=w.tvd||10000, md=w.md||tvd+10000, kop=tvd*0.7;
+  const dir=(w.lateralDir||Math.random()*360)*Math.PI/180;
+  for(let i=0;i<=n;i++){const t=i/n,m=t*md;let x,y,z,inc;
+    if(m<kop){x=0;y=0;z=-m;inc=0}
+    else if(m<kop+1200){const bp=(m-kop)/1200,ang=bp*90*Math.PI/180,r=1200/(Math.PI/2);x=r*Math.sin(ang)*Math.cos(dir);y=r*Math.sin(ang)*Math.sin(dir);z=-(kop+r*(1-Math.cos(ang)));inc=Math.min(90,bp*90)}
+    else{const ld=m-kop-1200,r=1200/(Math.PI/2);x=(r+ld)*Math.cos(dir);y=(r+ld)*Math.sin(dir);z=-(kop+r)+Math.sin(ld/500)*15;inc=90}
+    pts.push({md:Math.round(m),tvd:Math.round(-z),inc:Number(Math.min(90,inc).toFixed(1)),azi:Number((dir*180/Math.PI).toFixed(1)),x,y,z});}
+  return pts;
+}
+
+function renderDeviation(w) {
+  const el=document.getElementById('dv');if(!el)return;
+  const data=getDevData(w);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x111820);
+  const width=el.clientWidth,height=el.clientHeight;
+  const cam=new THREE.PerspectiveCamera(45,width/height,1,100000);
+  const ren=new THREE.WebGLRenderer({antialias:true});ren.setSize(width,height);ren.setPixelRatio(window.devicePixelRatio);
+  el.appendChild(ren.domElement);
+  const pts=data.map(p=>new THREE.Vector3((p.x||0)*0.5,(p.z||-p.tvd||0)*0.5,(p.y||0)*0.5));
+  if(pts.length<2){el.innerHTML='<div class="dl">No survey data</div>';return;}
+  const curve=new THREE.CatmullRomCurve3(pts);
+  const tube=new THREE.Mesh(new THREE.TubeGeometry(curve,100,15,8,false),new THREE.MeshPhongMaterial({color:new THREE.Color(w.color),emissive:new THREE.Color(w.color).multiplyScalar(0.3),shininess:60,transparent:true,opacity:0.85}));
+  scene.add(tube);
+  scene.add(new THREE.Mesh(new THREE.CylinderGeometry(25,25,80,12),new THREE.MeshPhongMaterial({color:0x888888})).translateX(pts[0].x).translateY(pts[0].y-40).translateZ(pts[0].z));
+  const gnd=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshPhongMaterial({color:0x1a2230,side:THREE.DoubleSide}));gnd.rotation.x=Math.PI/2;gnd.position.y=5;scene.add(gnd);
+  const fm=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshPhongMaterial({color:0x2a1a0a,side:THREE.DoubleSide,transparent:true,opacity:0.3}));fm.rotation.x=Math.PI/2;fm.position.y=-(w.tvd||10000)*0.5;scene.add(fm);
+  for(let i=Math.floor(pts.length*0.55);i<pts.length;i+=3){const cl=new THREE.Mesh(new THREE.SphereGeometry(8,6,6),new THREE.MeshPhongMaterial({color:0xff6633,transparent:true,opacity:0.6}));cl.position.copy(pts[Math.min(i,pts.length-1)]);scene.add(cl);}
+  scene.add(new THREE.AmbientLight(0x445566,0.8));const dl=new THREE.DirectionalLight(0xffffff,0.7);dl.position.set(2000,3000,1000);scene.add(dl);
+  const ctr=new THREE.Vector3();const box=new THREE.Box3().setFromObject(tube);box.getCenter(ctr);const sz=box.getSize(new THREE.Vector3()).length();
+  let aH=-0.6,aV=0.4,dst=sz*1.5,isDr=false,pmx,pmy;
+  function upCam(){cam.position.set(ctr.x+dst*Math.sin(aH)*Math.cos(aV),ctr.y+dst*Math.sin(aV),ctr.z+dst*Math.cos(aH)*Math.cos(aV));cam.lookAt(ctr);}
+  upCam();
+  ren.domElement.addEventListener('mousedown',e=>{isDr=true;pmx=e.clientX;pmy=e.clientY;e.stopPropagation();});
+  ren.domElement.addEventListener('mousemove',e=>{if(!isDr)return;aH+=(e.clientX-pmx)*0.005;aV=Math.max(-1.2,Math.min(1.2,aV+(e.clientY-pmy)*0.005));pmx=e.clientX;pmy=e.clientY;upCam();e.stopPropagation();});
+  ren.domElement.addEventListener('mouseup',()=>isDr=false);
+  ren.domElement.addEventListener('wheel',e=>{dst=Math.max(sz*0.5,Math.min(sz*4,dst+e.deltaY*2));upCam();e.stopPropagation();e.preventDefault();},{passive:false});
+  (function anim(){if(!document.getElementById('dv')?.contains(ren.domElement))return;requestAnimationFrame(anim);if(!isDr){aH+=0.003;upCam();}ren.render(scene,cam);})();
+  el.insertAdjacentHTML('afterbegin','<div class="dl">3D WELLBORE / DRAG TO ROTATE</div>');
+}
+
+// ----- SURVEY TABLE -----
+function renderSurveyTable(w) {
+  const data=getDevData(w);const tbl=document.getElementById('svtbl');
+  let h='<thead><tr><th>MD (ft)</th><th>TVD (ft)</th><th>Inc (°)</th><th>Azi (°)</th></tr></thead><tbody>';
+  const step=Math.max(1,Math.floor(data.length/17));
+  for(let i=0;i<data.length;i+=step){const d=data[i];h+=`<tr><td>${(d.md||0).toLocaleString()}</td><td>${(d.tvd||0).toLocaleString()}</td><td>${d.inc||0}</td><td>${d.azi||0}</td></tr>`;}
+  tbl.innerHTML=h+'</tbody>';
+}
+
+// ----- CHARTS -----
+let pCI=null, gCI=null;
+function renderProdChart(w) {
+  if(pCI)pCI.destroy();
+  const months=[],oD=[],gD=[],wD=[];
+  const nm=Math.min(120,(2026-(w.yearDrilled||2020))*12);const sd=new Date(w.yearDrilled||2020,6,1);const qi=w.ipOil||800;
+  for(let m=0;m<nm;m++){const d=new Date(sd);d.setMonth(d.getMonth()+m);
+    months.push(d.toLocaleDateString('en-US',{year:'2-digit',month:'short'}));
+    const oil=Math.max(20,qi/Math.pow(1+1.3*0.08*m,1/1.3)+(Math.random()-.5)*30);
+    oD.push(Math.round(oil));gD.push(Math.round(oil*(0.8+Math.random()*0.6)));wD.push(Math.round(oil*(0.1+m*0.02+Math.random()*0.3)));}
+  pCI=new Chart(document.getElementById('pch'),{type:'line',
+    data:{labels:months,datasets:[
+      {label:'Oil (bbl/d)',data:oD,borderColor:'#2dd47a',backgroundColor:'rgba(45,212,122,0.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
+      {label:'Gas (mcf/d)',data:gD,borderColor:'#4da6ff',backgroundColor:'rgba(77,166,255,0.05)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},
+      {label:'Water (bbl/d)',data:wD,borderColor:'#f0a030',backgroundColor:'rgba(240,160,48,0.05)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3}]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#5a6d80',font:{size:9,family:'JetBrains Mono'},boxWidth:10,boxHeight:2}},tooltip:{backgroundColor:'rgba(17,24,32,0.95)',bodyFont:{family:'JetBrains Mono',size:10}}},
+      scales:{x:{ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'},maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'}},grid:{color:'rgba(255,255,255,0.04)'}}}}});
+}
+function renderGORChart(w) {
+  if(gCI)gCI.destroy();
+  const months=[],gorD=[],wcD=[];
+  const nm=Math.min(120,(2026-(w.yearDrilled||2020))*12);const sd=new Date(w.yearDrilled||2020,6,1);
+  for(let m=0;m<nm;m++){const d=new Date(sd);d.setMonth(d.getMonth()+m);months.push(d.toLocaleDateString('en-US',{year:'2-digit',month:'short'}));gorD.push(Math.round(800+m*8+Math.random()*200));wcD.push(Math.round(Math.min(90,10+m*0.5+Math.random()*5)));}
+  gCI=new Chart(document.getElementById('gch'),{type:'line',
+    data:{labels:months,datasets:[{label:'GOR (scf/bbl)',data:gorD,borderColor:'#b366ff',borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'y'},{label:'Water cut (%)',data:wcD,borderColor:'#ff6b9d',borderWidth:1.5,pointRadius:0,tension:0.3,yAxisID:'y1'}]},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#5a6d80',font:{size:9,family:'JetBrains Mono'},boxWidth:10,boxHeight:2}},tooltip:{backgroundColor:'rgba(17,24,32,0.95)',bodyFont:{family:'JetBrains Mono',size:10}}},
+      scales:{x:{ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'},maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.03)'}},y:{position:'left',title:{display:true,text:'GOR',color:'#b366ff',font:{size:9}},ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'}},grid:{color:'rgba(255,255,255,0.04)'}},y1:{position:'right',title:{display:true,text:'WC %',color:'#ff6b9d',font:{size:9}},ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'}},grid:{display:false},min:0,max:100}}}});
+}
+
+// ----- INIT -----
+window.addEventListener('resize',()=>{resizeCanvas();drawMap();});
+resizeCanvas();
+loadData();
+</script>
+</body>
+</html>
