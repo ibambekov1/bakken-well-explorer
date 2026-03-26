@@ -20,12 +20,16 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--t1);heigh
 <div class="main"><div class="map-c" id="mc"><canvas class="map-cv" id="cv"></canvas><div class="srch"><span style="color:var(--t3);font-size:13px">&#128269;</span><input type="text" placeholder="Search well name, API, or operator..." id="si"></div><div class="m-ctrl"><button class="m-btn" onclick="zoomMap(1.3)">+</button><button class="m-btn" onclick="zoomMap(0.7)">−</button><button class="m-btn" onclick="resetMap()">⟲</button></div><div class="legend" id="leg"></div><div class="tt" id="tip"></div><div class="mode-label" id="modeLabel"></div><div class="loader" id="loader"><div class="spinner"></div><div class="ltxt" id="loadText">Loading...</div><div class="ltxt2" id="loadSub"></div></div></div><div class="wp" id="wp"><div class="ph"><button class="pc" onclick="closePanel()">✕</button><div class="wn" id="pwn"></div><div class="wop" id="pop"></div></div><div class="pb" id="ppb"></div></div></div>
 </div>
 <script>
-// NDIC GeoJSON field names: fileno, api_no, operator, well_name, td, spud_date,
-// field_name, qq, sec, twp, rng, feet_ns, fns1, feet_ew, few1,
-// latitude, longitude, well_type, status, api, County, symbol
+// =====================================================================
+// BAKKEN WELL EXPLORER — NDIC GeoJSON
+// Horizontals: fileno, api_no, api, operator, well_name, latitude, longitude, ...
+// Directionals: api_wellno, measdpth, tvd, inclinatio, azimuth, coordns, coordew, ...
+// JOIN KEY: horizontals.api (e.g. "3304300002000") ↔ directionals.api_wellno (e.g. "33007001460000")
+// Both are full 14-digit API numbers — strip to match
+// =====================================================================
 
 const DF={h:'data/horizontals.json',l:'data/laterals.json',d:'data/directionals.json'};
-const OPA={'CHORD ENERGY':'Chord Energy','ENERPLUS':'Chord Energy','OASIS PETROLEUM':'Chord Energy','HESS':'Hess Corporation','CONTINENTAL RESOURCES':'Continental Resources','DEVON ENERGY':'Devon Energy','GRAYSON MILL':'Devon Energy','CONOCOPHILLIPS':'ConocoPhillips','BURLINGTON RESOURCES':'ConocoPhillips','WHITING':'Whiting Petroleum','MARATHON OIL':'Marathon Oil','EOG RESOURCES':'EOG Resources','OVINTIV':'Ovintiv','XTO ENERGY':'XTO Energy','EXXON MOBIL':'ExxonMobil','KRAKEN':'Kraken Oil & Gas','PETRO-HUNT':'Petro-Hunt','SLAWSON':'Slawson Exploration','LIME ROCK':'Lime Rock Resources','EQUINOR':'Equinor','STATOIL':'Equinor','ZAVANNA':'Zavanna','QEP':'Chord Energy','LIBERTY RESOURCES':'Liberty Resources','HUNT OIL':'Hunt Oil','SINCLAIR':'Sinclair Oil','FIDELITY':'Fidelity E&P','DENBURY':'Denbury Resources','HALCON':'Halcon Resources','EMERALD':'Emerald Bay Energy','HEADINGTON':'Headington Oil','NORTHERN OIL':'Northern Oil & Gas','MUREX':'Murex Petroleum','PRAIRIE OPERATING':'Prairie Operating','NEWPARK':'Newpark Resources','BRIGADE':'Brigham Minerals','AMERICAN CONSOLIDATED':'American Consolidated','ENCORE':'Encore Energy','TRUE OIL':'True Oil','CRESCENT POINT':'Crescent Point','SAMSON':'Samson Resources','SM ENERGY':'SM Energy','RESOLUTE':'Resolute Natural Resources','FARSTAD':'Farstad Oil','CORNERSTONE':'Cornerstone Natural Resources','PEAK':'Peak Exploration'};
+const OPA={'CHORD ENERGY':'Chord Energy','ENERPLUS':'Chord Energy','OASIS PETROLEUM':'Chord Energy','HESS':'Hess Corporation','CONTINENTAL RESOURCES':'Continental Resources','DEVON ENERGY':'Devon Energy','GRAYSON MILL':'Devon Energy','CONOCOPHILLIPS':'ConocoPhillips','BURLINGTON RESOURCES':'ConocoPhillips','WHITING':'Whiting Petroleum','MARATHON OIL':'Marathon Oil','EOG RESOURCES':'EOG Resources','OVINTIV':'Ovintiv','XTO ENERGY':'XTO Energy','EXXON MOBIL':'ExxonMobil','KRAKEN':'Kraken Oil & Gas','PETRO-HUNT':'Petro-Hunt','SLAWSON':'Slawson Exploration','LIME ROCK':'Lime Rock Resources','EQUINOR':'Equinor','STATOIL':'Equinor','ZAVANNA':'Zavanna','QEP':'Chord Energy','LIBERTY RESOURCES':'Liberty Resources','HUNT OIL':'Hunt Oil','SINCLAIR':'Sinclair Oil','FIDELITY':'Fidelity E&P','DENBURY':'Denbury Resources','HALCON':'Halcon Resources','EMERALD':'Emerald Bay Energy','HEADINGTON':'Headington Oil','NORTHERN OIL':'Northern Oil & Gas','MUREX':'Murex Petroleum','NEWPARK':'Newpark Resources','SAMSON':'Samson Resources','SM ENERGY':'SM Energy','RESOLUTE':'Resolute Natural Resources','TRUE OIL':'True Oil','CRESCENT POINT':'Crescent Point','FARSTAD':'Farstad Oil'};
 const PAL=['#4da6ff','#2dd47a','#f0a030','#f05050','#b366ff','#ff6b9d','#00d4aa','#ffcc00','#ff8844','#66bbff','#ee77aa','#88dd55','#44ddcc','#dd6644','#aa88ff','#ff9966','#66cc99','#cc6699','#99cc66','#6699cc','#77bbdd','#ddaa44','#44aadd','#dd4477'];
 let wells=[],latG={},surD={},opC={},dataMode='demo';
 const MS={cLat:48.05,cLon:-103.35,zoom:1,drag:false,lx:0,ly:0,ppd:600,sel:null,hov:null,filtOp:null,_sx:0,_sy:0};
@@ -34,29 +38,119 @@ function normOp(r){if(!r)return'Unknown';const u=r.trim().toUpperCase();for(cons
 function exYr(v){if(!v)return null;const m=String(v).match(/(\d{4})/);return m?parseInt(m[1]):null;}
 function num(v){const n=parseFloat(v);return isNaN(n)?null:n;}
 function int(v){const n=num(v);return n===null?null:Math.round(n);}
+// Normalize API to digits-only for matching
+function normApi(v){if(!v)return'';return String(v).replace(/[^0-9]/g,'');}
 
 function procHz(gj){const out=[];for(const f of(gj.features||[])){const p=f.properties||{},g=f.geometry;let lat=num(p.latitude),lon=num(p.longitude);if((!lat||!lon)&&g&&g.type==='Point'){lon=g.coordinates[0];lat=g.coordinates[1];}if(!lat||!lon)continue;if(lat<45.5||lat>49.5||lon<-106||lon>-100)continue;
-out.push({id:String(p.fileno||out.length),name:p.well_name||'',api:String(p.api_no||''),apiLong:String(p.api||''),operator:normOp(p.operator||''),status:p.status||'',county:p.County||'',field:p.field_name||'',wellType:p.well_type||'',symbol:p.symbol||'',lat,lon,td:int(p.td),spudDate:p.spud_date||null,yearDrilled:exYr(p.spud_date),qq:p.qq||'',sec:p.sec||'',twp:p.twp||'',rng:p.rng||'',feetNS:p.feet_ns||'',fns1:p.fns1||'',feetEW:p.feet_ew||'',few1:p.few1||''});}return out;}
+out.push({id:String(p.fileno||out.length),name:p.well_name||'',api:String(p.api_no||''),apiLong:String(p.api||''),apiNorm:normApi(p.api),operator:normOp(p.operator||''),status:p.status||'',county:p.County||'',field:p.field_name||'',wellType:p.well_type||'',symbol:p.symbol||'',lat,lon,td:int(p.td),spudDate:p.spud_date||null,yearDrilled:exYr(p.spud_date),qq:p.qq||'',sec:p.sec||'',twp:p.twp||'',rng:p.rng||'',feetNS:p.feet_ns||'',fns1:p.fns1||'',feetEW:p.feet_ew||'',few1:p.few1||''});}return out;}
 
 function procLat(gj){const m={};for(const f of(gj.features||[])){const p=f.properties||{},g=f.geometry;const id=String(p.fileno||p.FILENO||'');if(!id||!g)continue;let c=[];if(g.type==='LineString')c=g.coordinates;else if(g.type==='MultiLineString')c=g.coordinates.flat();if(c.length>1)m[id]=c.map(x=>[x[1],x[0]]);}return m;}
 
-function procDir(gj){const m={};for(const f of(gj.features||[])){const p=f.properties||{},g=f.geometry;const id=String(p.fileno||p.FILENO||'');if(!id)continue;if(!m[id])m[id]=[];m[id].push({md:num(p.md||p.MD),tvd:num(p.tvd||p.TVD),inc:num(p.inc||p.INC||p.inclination||p.INCLINATIO),azi:num(p.azi||p.AZI||p.azimuth||p.AZIMUTH),lat:g?.coordinates?.[1],lon:g?.coordinates?.[0]});}for(const id in m)m[id].sort((a,b)=>(a.md||0)-(b.md||0));return m;}
+// Process directionals — keyed by NORMALIZED api_wellno (digits only)
+function procDir(gj){
+  const m={};
+  for(const f of(gj.features||[])){
+    const p=f.properties||{};
+    // api_wellno is the join key (e.g. "33007001460000")
+    const apiRaw = p.api_wellno || p.API_WELLNO || '';
+    const apiKey = normApi(apiRaw);
+    if(!apiKey) continue;
 
-async function loadData(){const lt=document.getElementById('loadText'),ls=document.getElementById('loadSub');
-try{lt.textContent='Loading horizontal wells...';ls.textContent='data/horizontals.json';const gj=await(await fetch(DF.h)).json();lt.textContent='Processing '+gj.features.length.toLocaleString()+' features...';wells=procHz(gj);if(!wells.length)throw new Error('No wells');dataMode='live';lt.textContent=wells.length.toLocaleString()+' wells loaded';console.log('Loaded',wells.length,'wells');
-try{ls.textContent='Loading laterals...';latG=procLat(await(await fetch(DF.l)).json());console.log('Laterals:',Object.keys(latG).length);}catch(e){console.log('No laterals:',e.message);}
-try{ls.textContent='Loading surveys...';surD=procDir(await(await fetch(DF.d)).json());console.log('Surveys:',Object.keys(surD).length);}catch(e){console.log('No directionals:',e.message);}
-}catch(e){console.log('Fallback to demo:',e.message);lt.textContent='Demo mode';dataMode='demo';wells=genDemo(850);await new Promise(r=>setTimeout(r,1500));}
-for(const w of wells){if(latG[w.id])w.lateral=latG[w.id];if(w.lateral?.length>1){w.endLat=w.lateral[w.lateral.length-1][0];w.endLon=w.lateral[w.lateral.length-1][1];}else if(w.bhLat&&w.bhLon){w.endLat=w.bhLat;w.endLon=w.bhLon;}w.hasSurvey=!!surD[w.id];}
-const cnt={};wells.forEach(w=>{cnt[w.operator]=(cnt[w.operator]||0)+1;});Object.entries(cnt).sort((a,b)=>b[1]-a[1]).forEach(([op,n],i)=>{opC[op]={color:PAL[i%PAL.length],count:n};});wells.forEach(w=>{w.color=opC[w.operator]?.color||'#666';});
-document.getElementById('wc').textContent=wells.length.toLocaleString();document.getElementById('oc').textContent=Object.keys(opC).length;document.getElementById('cc').textContent=[...new Set(wells.map(w=>w.county).filter(Boolean))].length;document.getElementById('modeLabel').innerHTML=dataMode==='live'?`NDIC data — ${wells.length.toLocaleString()} wells / <a href="https://gis.dmr.nd.gov/gisdownload.asp" target="_blank">source</a>`:'Demo data';
-buildLeg();document.getElementById('loader').style.display='none';drawMap();}
+    if(!m[apiKey]) m[apiKey]=[];
+    const md = num(p.measdpth);
+    const tvd = num(p.tvd);
+    const inc = num(p.inclinatio);
+    const azi = num(p.azimuth);
+    // coordns/coordew are N/S and E/W offsets from surface in feet
+    const ns = num(p.coordns) || 0;
+    const ew = num(p.coordew) || 0;
+    const nsDir = p.coordnsdir || 'N';
+    const ewDir = p.coordewdir || 'E';
+    const lat = num(p.lat);
+    const lon = num(p.long);
 
-function genDemo(n){const O=['Chord Energy','Hess Corporation','Continental Resources','Devon Energy','ConocoPhillips','Whiting Petroleum','Marathon Oil','EOG Resources','Ovintiv','Kraken Oil & Gas','Petro-Hunt','Slawson Exploration'],C=['McKenzie','Mountrail','Williams','Dunn','Divide','Burke','Stark','Billings'],cores=[{lat:48.15,lon:-103.3,r:.4,w:.35},{lat:48.4,lon:-102.8,r:.35,w:.25},{lat:48.55,lon:-103.8,r:.3,w:.15},{lat:47.55,lon:-103.5,r:.35,w:.15},{lat:47.85,lon:-103.1,r:.25,w:.1}],N=['Eagle','Hawk','Buffalo','Thunder','Prairie','Antelope','Coyote','Falcon','Mustang','Bear'],out=[];for(let i=0;i<n;i++){let r=Math.random(),cW=0,a=cores[0];for(const c of cores){cW+=c.w;if(r<cW){a=c;break;}}const ang=Math.random()*Math.PI*2,d=Math.sqrt(Math.random())*a.r,lat=a.lat+Math.cos(ang)*d,lon=a.lon+Math.sin(ang)*d*1.4,yr=2006+Math.floor(Math.random()*20),dir=Math.random()*360,len=7500+Math.random()*12500,rd=dir*Math.PI/180,ld=len/364000;out.push({id:String(i),name:`${N[i%10]} ${Math.floor(Math.random()*40+1)}-${Math.floor(Math.random()*36+1)}H`,api:`33-${String(Math.floor(Math.random()*99+1)).padStart(3,'0')}-${String(Math.floor(Math.random()*99999+1)).padStart(5,'0')}`,operator:O[i%O.length],status:'A',county:C[Math.floor(Math.random()*C.length)],field:'BAKKEN',lat,lon,bhLat:lat+Math.cos(rd)*ld,bhLon:lon+Math.sin(rd)*ld/Math.cos(lat*Math.PI/180),td:9800+Math.floor(Math.random()*1400)+Math.floor(len),yearDrilled:yr,spudDate:`${yr}-06-15`});}return out;}
+    m[apiKey].push({
+      md, tvd, inc, azi,
+      // Convert NS/EW offsets to x,y,z for 3D rendering
+      // N = +x, S = -x, E = +y, W = -y, z = -tvd
+      x: (nsDir==='S' ? -ns : ns),
+      y: (ewDir==='W' ? -ew : ew),
+      z: tvd ? -tvd : null,
+      lat, lon,
+      type: p.surveytype || ''
+    });
+  }
+  // Sort each survey by measured depth
+  for(const k in m) m[k].sort((a,b)=>(a.md||0)-(b.md||0));
+  return m;
+}
+
+async function loadData(){
+  const lt=document.getElementById('loadText'),ls=document.getElementById('loadSub');
+  try{
+    lt.textContent='Loading horizontal wells...';ls.textContent='data/horizontals.json';
+    const gj=await(await fetch(DF.h)).json();
+    lt.textContent='Processing '+gj.features.length.toLocaleString()+' features...';
+    wells=procHz(gj);
+    if(!wells.length)throw new Error('No wells');
+    dataMode='live';
+    console.log('Loaded',wells.length,'wells');
+
+    try{ls.textContent='Loading laterals...';latG=procLat(await(await fetch(DF.l)).json());console.log('Laterals:',Object.keys(latG).length);}catch(e){console.log('No laterals:',e.message);}
+
+    // Load directionals — keyed by normalized API
+    try{
+      ls.textContent='Loading deviation surveys...';
+      const dirGj=await(await fetch(DF.d)).json();
+      surD=procDir(dirGj);
+      const surveyCount=Object.keys(surD).length;
+      console.log('Survey data for',surveyCount,'unique APIs (',dirGj.features.length,'total points)');
+      // Match surveys to wells using normalized API
+      let matched=0;
+      for(const w of wells){
+        if(surD[w.apiNorm]){
+          w.hasSurvey=true;
+          w.surveyKey=w.apiNorm;
+          matched++;
+        }
+      }
+      console.log('Matched surveys to',matched,'wells out of',wells.length);
+    }catch(e){console.log('No directionals:',e.message);}
+
+    lt.textContent=wells.length.toLocaleString()+' wells loaded';
+  }catch(e){
+    console.log('Fallback to demo:',e.message);lt.textContent='Demo mode';dataMode='demo';
+    wells=genDemo(850);await new Promise(r=>setTimeout(r,1500));
+  }
+
+  // Attach laterals + endpoints
+  for(const w of wells){
+    if(latG[w.id])w.lateral=latG[w.id];
+    if(w.lateral?.length>1){w.endLat=w.lateral[w.lateral.length-1][0];w.endLon=w.lateral[w.lateral.length-1][1];}
+    else if(w.bhLat&&w.bhLon){w.endLat=w.bhLat;w.endLon=w.bhLon;}
+  }
+
+  // Operator colors
+  const cnt={};wells.forEach(w=>{cnt[w.operator]=(cnt[w.operator]||0)+1;});
+  Object.entries(cnt).sort((a,b)=>b[1]-a[1]).forEach(([op,n],i)=>{opC[op]={color:PAL[i%PAL.length],count:n};});
+  wells.forEach(w=>{w.color=opC[w.operator]?.color||'#666';});
+
+  document.getElementById('wc').textContent=wells.length.toLocaleString();
+  document.getElementById('oc').textContent=Object.keys(opC).length;
+  document.getElementById('cc').textContent=[...new Set(wells.map(w=>w.county).filter(Boolean))].length;
+  const survMatched=wells.filter(w=>w.hasSurvey).length;
+  document.getElementById('modeLabel').innerHTML=dataMode==='live'
+    ?`NDIC data — ${wells.length.toLocaleString()} wells, ${survMatched.toLocaleString()} surveys / <a href="https://gis.dmr.nd.gov/gisdownload.asp" target="_blank">source</a>`
+    :'Demo data';
+
+  buildLeg();document.getElementById('loader').style.display='none';drawMap();
+}
+
+function genDemo(n){const O=['Chord Energy','Hess Corporation','Continental Resources','Devon Energy','ConocoPhillips','Whiting Petroleum','Marathon Oil','EOG Resources','Ovintiv','Kraken Oil & Gas','Petro-Hunt','Slawson Exploration'],C=['McKenzie','Mountrail','Williams','Dunn','Divide','Burke','Stark','Billings'],cores=[{lat:48.15,lon:-103.3,r:.4,w:.35},{lat:48.4,lon:-102.8,r:.35,w:.25},{lat:48.55,lon:-103.8,r:.3,w:.15},{lat:47.55,lon:-103.5,r:.35,w:.15},{lat:47.85,lon:-103.1,r:.25,w:.1}],N=['Eagle','Hawk','Buffalo','Thunder','Prairie','Antelope','Coyote','Falcon','Mustang','Bear'],out=[];for(let i=0;i<n;i++){let r=Math.random(),cW=0,a=cores[0];for(const c of cores){cW+=c.w;if(r<cW){a=c;break;}}const ang=Math.random()*Math.PI*2,d=Math.sqrt(Math.random())*a.r,lat=a.lat+Math.cos(ang)*d,lon=a.lon+Math.sin(ang)*d*1.4,yr=2006+Math.floor(Math.random()*20),dir=Math.random()*360,len=7500+Math.random()*12500,rd=dir*Math.PI/180,ld=len/364000;out.push({id:String(i),name:`${N[i%10]} ${Math.floor(Math.random()*40+1)}-${Math.floor(Math.random()*36+1)}H`,api:`33-${String(Math.floor(Math.random()*99+1)).padStart(3,'0')}-${String(Math.floor(Math.random()*99999+1)).padStart(5,'0')}`,apiNorm:'',operator:O[i%O.length],status:'A',county:C[Math.floor(Math.random()*C.length)],field:'BAKKEN',lat,lon,bhLat:lat+Math.cos(rd)*ld,bhLon:lon+Math.sin(rd)*ld/Math.cos(lat*Math.PI/180),td:9800+Math.floor(Math.random()*1400)+Math.floor(len),yearDrilled:yr,spudDate:`${yr}-06-15`});}return out;}
 
 const cv=document.getElementById('cv'),cx=cv.getContext('2d'),mc=document.getElementById('mc');
 function rsz(){const d=window.devicePixelRatio||1;cv.width=mc.clientWidth*d;cv.height=mc.clientHeight*d;cv.style.width=mc.clientWidth+'px';cv.style.height=mc.clientHeight+'px';cx.setTransform(d,0,0,d,0,0);}
-function l2s(lat,lon){const p=MS.ppd*MS.zoom,x=mc.clientWidth/2+(lon-MS.cLon)*p,y=mc.clientHeight/2-(lat-MS.cLat)*p*0.7;return{x,y};}
+function l2s(lat,lon){const p=MS.ppd*MS.zoom;return{x:mc.clientWidth/2+(lon-MS.cLon)*p,y:mc.clientHeight/2-(lat-MS.cLat)*p*0.7};}
 
 function drawMap(){const w=mc.clientWidth,h=mc.clientHeight;cx.clearRect(0,0,w,h);cx.fillStyle='#0a100f';cx.fillRect(0,0,w,h);const ppd=MS.ppd*MS.zoom;
 cx.strokeStyle='rgba(255,255,255,0.04)';cx.lineWidth=0.5;for(let lat=46;lat<=50;lat+=0.5){const p=l2s(lat,-105),p2=l2s(lat,-101);cx.beginPath();cx.moveTo(p.x,p.y);cx.lineTo(p2.x,p2.y);cx.stroke();if(MS.zoom>0.8){cx.fillStyle='rgba(255,255,255,0.15)';cx.font='10px JetBrains Mono';cx.fillText(`${lat.toFixed(1)}°N`,p.x+4,p.y-3);}}
@@ -72,7 +166,6 @@ const sK=20,sD=sK/111,sP=sD*ppd;cx.strokeStyle='rgba(255,255,255,0.3)';cx.lineWi
 
 function buildLeg(){const el=document.getElementById('leg');let h='<div class="leg-t">Operators</div>';const s=Object.entries(opC).sort((a,b)=>b[1].count-a[1].count),sh=s.slice(0,20),rest=s.slice(20);for(const[n,d]of sh){const e=n.replace(/'/g,"\\'");h+=`<div class="leg-i" data-op="${e}" onclick="filterOp('${e}')"><div class="leg-d" style="background:${d.color}"></div><span>${n}</span><span class="leg-c">${d.count.toLocaleString()}</span></div>`;}if(rest.length)h+=`<div class="leg-i" style="color:var(--t3);font-size:10px;padding-top:4px">+ ${rest.length} more (${rest.reduce((s,e)=>s+e[1].count,0).toLocaleString()} wells)</div>`;h+='<div class="leg-i" onclick="filterOp(null)" style="margin-top:6px;color:var(--grn)"><span>Show all</span></div>';el.innerHTML=h;}
 function filterOp(op){MS.filtOp=op;document.querySelectorAll('.leg-i').forEach(el=>el.classList.toggle('af',el.dataset.op===op));drawMap();}
-
 function findW(sx,sy){let b=null,bd=Infinity;for(const w of wells){if(MS.filtOp&&w.operator!==MS.filtOp)continue;const p=l2s(w.lat,w.lon),d=Math.hypot(p.x-sx,p.y-sy);if(d<12&&d<bd){bd=d;b=w;}}return b;}
 cv.addEventListener('mousedown',e=>{MS.drag=true;MS.lx=e.clientX;MS.ly=e.clientY;MS._sx=e.clientX;MS._sy=e.clientY;});
 cv.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;if(MS.drag){const dx=e.clientX-MS.lx,dy=e.clientY-MS.ly,p=MS.ppd*MS.zoom;MS.cLon-=dx/p;MS.cLat+=dy/(p*0.7);MS.lx=e.clientX;MS.ly=e.clientY;drawMap();return;}const w=findW(sx,sy);if(w){MS.hov=w.id;cv.style.cursor='pointer';showTip(w,e.clientX,e.clientY);}else{MS.hov=null;cv.style.cursor='grab';hideTip();}drawMap();});
@@ -80,23 +173,99 @@ cv.addEventListener('mouseup',e=>{if(MS.drag&&Math.abs(e.clientX-MS._sx)<3&&Math
 cv.addEventListener('wheel',e=>{e.preventDefault();MS.zoom=Math.max(0.3,Math.min(15,MS.zoom*(e.deltaY>0?0.85:1.18)));drawMap();},{passive:false});
 function zoomMap(f){MS.zoom=Math.max(0.3,Math.min(15,MS.zoom*f));drawMap();}
 function resetMap(){MS.cLat=48.05;MS.cLon=-103.35;MS.zoom=1;drawMap();}
-
 const tip=document.getElementById('tip');
-function showTip(w,x,y){tip.style.display='block';tip.style.left=(x+15)+'px';tip.style.top=(y-10)+'px';const sl=w.status==='A'?'Active':w.status==='IA'?'Inactive':w.status||'—';tip.innerHTML=`<div class="tn">${w.name||'—'}</div><div class="tr"><span class="tl">Operator</span><span class="tv">${w.operator}</span></div><div class="tr"><span class="tl">API</span><span class="tv">${w.api||'—'}</span></div><div class="tr"><span class="tl">Field</span><span class="tv">${w.field||'—'}</span></div><div class="tr"><span class="tl">County</span><span class="tv">${w.county||'—'}</span></div><div class="tr"><span class="tl">Year</span><span class="tv">${w.yearDrilled||'—'}</span></div><div style="margin-top:4px;font-size:9px;color:var(--t3)">Click for details</div>`;}
+function showTip(w,x,y){tip.style.display='block';tip.style.left=(x+15)+'px';tip.style.top=(y-10)+'px';const sl=w.status==='A'?'Active':w.status==='IA'?'Inactive':w.status||'—';tip.innerHTML=`<div class="tn">${w.name||'—'}</div><div class="tr"><span class="tl">Operator</span><span class="tv">${w.operator}</span></div><div class="tr"><span class="tl">API</span><span class="tv">${w.api||'—'}</span></div><div class="tr"><span class="tl">Field</span><span class="tv">${w.field||'—'}</span></div><div class="tr"><span class="tl">County</span><span class="tv">${w.county||'—'}</span></div><div class="tr"><span class="tl">Year</span><span class="tv">${w.yearDrilled||'—'}</span></div><div class="tr"><span class="tl">Survey</span><span class="tv">${w.hasSurvey?'Yes':'—'}</span></div><div style="margin-top:4px;font-size:9px;color:var(--t3)">Click for details</div>`;}
 function hideTip(){tip.style.display='none';}
-
 document.getElementById('si').addEventListener('input',e=>{const q=e.target.value.toLowerCase();if(q.length<2){MS.filtOp=null;drawMap();return;}const m=wells.find(w=>(w.name||'').toLowerCase().includes(q)||(w.api||'').includes(q)||w.operator.toLowerCase().includes(q));if(m){MS.cLat=m.lat;MS.cLon=m.lon;MS.zoom=5;MS.sel=m.id;openPanel(m);drawMap();}});
 
 function closePanel(){document.getElementById('wp').classList.remove('open');MS.sel=null;drawMap();}
 function openPanel(w){document.getElementById('wp').classList.add('open');document.getElementById('pwn').textContent=w.name||`Well ${w.id}`;const sc=(w.status==='A')?'b-a':'b-i',sl=w.status==='A'?'Active':w.status==='IA'?'Inactive':w.status||'—';document.getElementById('pop').innerHTML=`<div class="od" style="background:${w.color}"></div>${w.operator}<span class="badge ${sc}">${sl}</span>`;
-document.getElementById('ppb').innerHTML=`<div class="st">Well header</div><div class="ig"><div class="ic"><div class="il">API number</div><div class="iv">${w.api||'—'}</div></div><div class="ic"><div class="il">Full API</div><div class="iv">${w.apiLong||'—'}</div></div><div class="ic"><div class="il">NDIC file #</div><div class="iv b">${w.id}</div></div><div class="ic"><div class="il">Year drilled</div><div class="iv b">${w.yearDrilled||'—'}</div></div><div class="ic"><div class="il">County</div><div class="iv">${w.county||'—'}</div></div><div class="ic"><div class="il">Field</div><div class="iv g">${w.field||'—'}</div></div><div class="ic"><div class="il">Well type</div><div class="iv">${w.wellType||'—'}</div></div><div class="ic"><div class="il">Status</div><div class="iv">${sl}</div></div><div class="ic"><div class="il">Surface lat/lon</div><div class="iv">${w.lat?.toFixed(5)}°, ${w.lon?.toFixed(5)}°</div></div><div class="ic"><div class="il">BH lat/lon</div><div class="iv">${w.endLat?.toFixed(5)||'—'}°, ${w.endLon?.toFixed(5)||'—'}°</div></div><div class="ic"><div class="il">Total depth</div><div class="iv a">${w.td?.toLocaleString()||'—'} ft</div></div><div class="ic"><div class="il">Spud date</div><div class="iv">${w.spudDate||'—'}</div></div><div class="ic"><div class="il">Location</div><div class="iv">${w.qq||'—'}</div></div><div class="ic"><div class="il">Twp/Rng/Sec</div><div class="iv">${w.twp}-${w.rng}-${w.sec}</div></div></div><div class="st">Deviation survey (3D)</div><div class="dc" id="dv"></div><div class="st">Survey data</div><div style="max-height:200px;overflow-y:auto;border-radius:7px;border:1px solid var(--bdr)"><table class="svt" id="svtbl"></table></div><div class="st">Production (estimated decline)</div><div class="cc"><div class="cw"><canvas id="pch"></canvas></div></div>`;
+document.getElementById('ppb').innerHTML=`<div class="st">Well header</div><div class="ig"><div class="ic"><div class="il">API number</div><div class="iv">${w.api||'—'}</div></div><div class="ic"><div class="il">Full API</div><div class="iv">${w.apiLong||'—'}</div></div><div class="ic"><div class="il">NDIC file #</div><div class="iv b">${w.id}</div></div><div class="ic"><div class="il">Year drilled</div><div class="iv b">${w.yearDrilled||'—'}</div></div><div class="ic"><div class="il">County</div><div class="iv">${w.county||'—'}</div></div><div class="ic"><div class="il">Field</div><div class="iv g">${w.field||'—'}</div></div><div class="ic"><div class="il">Well type</div><div class="iv">${w.wellType||'—'}</div></div><div class="ic"><div class="il">Status</div><div class="iv">${sl}</div></div><div class="ic"><div class="il">Surface lat/lon</div><div class="iv">${w.lat?.toFixed(5)}°, ${w.lon?.toFixed(5)}°</div></div><div class="ic"><div class="il">BH lat/lon</div><div class="iv">${w.endLat?.toFixed(5)||'—'}°, ${w.endLon?.toFixed(5)||'—'}°</div></div><div class="ic"><div class="il">Total depth</div><div class="iv a">${w.td?.toLocaleString()||'—'} ft</div></div><div class="ic"><div class="il">Spud date</div><div class="iv">${w.spudDate||'—'}</div></div><div class="ic"><div class="il">Location</div><div class="iv">${w.qq||'—'}</div></div><div class="ic"><div class="il">Twp/Rng/Sec</div><div class="iv">${w.twp}-${w.rng}-${w.sec}</div></div></div><div class="st">Deviation survey (3D)</div><div class="dc" id="dv"></div><div class="st">Survey data${w.hasSurvey?' (NDIC)':' (estimated)'}</div><div style="max-height:200px;overflow-y:auto;border-radius:7px;border:1px solid var(--bdr)"><table class="svt" id="svtbl"></table></div><div class="st">Production (estimated decline)</div><div class="cc"><div class="cw"><canvas id="pch"></canvas></div></div>`;
 renderDev(w);renderST(w);renderPC(w);}
 
-function getDD(w){if(surD[w.id]?.length>3)return surD[w.id];const pts=[],n=50,tvd=w.td||10000,md=tvd+8000,kop=tvd*0.65,dir=(Math.random()*360)*Math.PI/180;for(let i=0;i<=n;i++){const t=i/n,m=t*md;let x,y,z,inc;if(m<kop){x=0;y=0;z=-m;inc=0;}else if(m<kop+1200){const bp=(m-kop)/1200,ang=bp*90*Math.PI/180,r=1200/(Math.PI/2);x=r*Math.sin(ang)*Math.cos(dir);y=r*Math.sin(ang)*Math.sin(dir);z=-(kop+r*(1-Math.cos(ang)));inc=Math.min(90,bp*90);}else{const ld=m-kop-1200,r=1200/(Math.PI/2);x=(r+ld)*Math.cos(dir);y=(r+ld)*Math.sin(dir);z=-(kop+r)+Math.sin(ld/500)*15;inc=90;}pts.push({md:Math.round(m),tvd:Math.round(-z),inc:Number(Math.min(90,inc).toFixed(1)),azi:Number((dir*180/Math.PI).toFixed(1)),x,y,z});}return pts;}
+// Get deviation data — use REAL survey if available, otherwise estimate
+function getDD(w){
+  // Try real survey data matched by API
+  const key = w.surveyKey || w.apiNorm;
+  if(key && surD[key] && surD[key].length>3){
+    return surD[key];
+  }
+  // Fallback: estimated trajectory
+  const pts=[],n=50,tvd=w.td||10000,md=tvd+8000,kop=tvd*0.65,dir=(Math.random()*360)*Math.PI/180;
+  for(let i=0;i<=n;i++){const t=i/n,m=t*md;let x,y,z,inc;if(m<kop){x=0;y=0;z=-m;inc=0;}else if(m<kop+1200){const bp=(m-kop)/1200,ang=bp*90*Math.PI/180,r=1200/(Math.PI/2);x=r*Math.sin(ang)*Math.cos(dir);y=r*Math.sin(ang)*Math.sin(dir);z=-(kop+r*(1-Math.cos(ang)));inc=Math.min(90,bp*90);}else{const ld=m-kop-1200,r=1200/(Math.PI/2);x=(r+ld)*Math.cos(dir);y=(r+ld)*Math.sin(dir);z=-(kop+r)+Math.sin(ld/500)*15;inc=90;}pts.push({md:Math.round(m),tvd:Math.round(-z),inc:Number(Math.min(90,inc).toFixed(1)),azi:Number((dir*180/Math.PI).toFixed(1)),x,y,z});}
+  return pts;
+}
 
-function renderDev(w){const el=document.getElementById('dv');if(!el)return;const data=getDD(w),scene=new THREE.Scene();scene.background=new THREE.Color(0x111820);const width=el.clientWidth,height=el.clientHeight,cam=new THREE.PerspectiveCamera(45,width/height,1,100000),ren=new THREE.WebGLRenderer({antialias:true});ren.setSize(width,height);ren.setPixelRatio(window.devicePixelRatio);el.appendChild(ren.domElement);const pts=data.map(p=>new THREE.Vector3((p.x||0)*0.5,(p.z||-p.tvd||0)*0.5,(p.y||0)*0.5));if(pts.length<2){el.innerHTML='<div class="dl">No survey data</div>';return;}const curve=new THREE.CatmullRomCurve3(pts),tube=new THREE.Mesh(new THREE.TubeGeometry(curve,100,15,8,false),new THREE.MeshPhongMaterial({color:new THREE.Color(w.color),emissive:new THREE.Color(w.color).multiplyScalar(0.3),shininess:60,transparent:true,opacity:0.85}));scene.add(tube);scene.add(new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshPhongMaterial({color:0x1a2230,side:THREE.DoubleSide})).translateY(5).rotateX(Math.PI/2));for(let i=Math.floor(pts.length*0.55);i<pts.length;i+=3){const cl=new THREE.Mesh(new THREE.SphereGeometry(8,6,6),new THREE.MeshPhongMaterial({color:0xff6633,transparent:true,opacity:0.6}));cl.position.copy(pts[Math.min(i,pts.length-1)]);scene.add(cl);}scene.add(new THREE.AmbientLight(0x445566,0.8));const dl=new THREE.DirectionalLight(0xffffff,0.7);dl.position.set(2000,3000,1000);scene.add(dl);const ctr=new THREE.Vector3(),box=new THREE.Box3().setFromObject(tube);box.getCenter(ctr);const sz=box.getSize(new THREE.Vector3()).length();let aH=-0.6,aV=0.4,dst=sz*1.5,isDr=false,pmx,pmy;function uC(){cam.position.set(ctr.x+dst*Math.sin(aH)*Math.cos(aV),ctr.y+dst*Math.sin(aV),ctr.z+dst*Math.cos(aH)*Math.cos(aV));cam.lookAt(ctr);}uC();ren.domElement.addEventListener('mousedown',e=>{isDr=true;pmx=e.clientX;pmy=e.clientY;e.stopPropagation();});ren.domElement.addEventListener('mousemove',e=>{if(!isDr)return;aH+=(e.clientX-pmx)*0.005;aV=Math.max(-1.2,Math.min(1.2,aV+(e.clientY-pmy)*0.005));pmx=e.clientX;pmy=e.clientY;uC();e.stopPropagation();});ren.domElement.addEventListener('mouseup',()=>isDr=false);ren.domElement.addEventListener('wheel',e=>{dst=Math.max(sz*0.5,Math.min(sz*4,dst+e.deltaY*2));uC();e.stopPropagation();e.preventDefault();},{passive:false});(function a(){if(!document.getElementById('dv')?.contains(ren.domElement))return;requestAnimationFrame(a);if(!isDr){aH+=0.003;uC();}ren.render(scene,cam);})();el.insertAdjacentHTML('afterbegin',`<div class="dl">${w.hasSurvey?'REAL SURVEY':'ESTIMATED'} / DRAG TO ROTATE</div>`);}
+function renderDev(w){
+  const el=document.getElementById('dv');if(!el)return;
+  const data=getDD(w);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x111820);
+  const width=el.clientWidth,height=el.clientHeight,cam=new THREE.PerspectiveCamera(45,width/height,1,100000);
+  const ren=new THREE.WebGLRenderer({antialias:true});ren.setSize(width,height);ren.setPixelRatio(window.devicePixelRatio);el.appendChild(ren.domElement);
 
-function renderST(w){const data=getDD(w),tbl=document.getElementById('svtbl');let h='<thead><tr><th>MD</th><th>TVD</th><th>Inc°</th><th>Azi°</th></tr></thead><tbody>';const step=Math.max(1,Math.floor(data.length/17));for(let i=0;i<data.length;i+=step){const d=data[i];h+=`<tr><td>${(d.md||0).toLocaleString()}</td><td>${(d.tvd||0).toLocaleString()}</td><td>${d.inc||0}</td><td>${d.azi||0}</td></tr>`;}tbl.innerHTML=h+'</tbody>';}
+  // Build 3D points from survey data
+  // Real data has x (NS offset ft), y (EW offset ft), z (-TVD ft)
+  // Scale factor for visualization
+  const sf = 0.5;
+  const pts=data.map(p=>{
+    const x = (p.x||0)*sf;
+    const z_val = p.z !== null && p.z !== undefined ? p.z*sf : (p.tvd ? -p.tvd*sf : 0);
+    const y = (p.y||0)*sf;
+    return new THREE.Vector3(x, z_val, y);
+  });
+
+  if(pts.length<2){el.innerHTML='<div class="dl">No survey data</div>';return;}
+
+  const curve=new THREE.CatmullRomCurve3(pts);
+  const tube=new THREE.Mesh(new THREE.TubeGeometry(curve,100,15,8,false),new THREE.MeshPhongMaterial({color:new THREE.Color(w.color),emissive:new THREE.Color(w.color).multiplyScalar(0.3),shininess:60,transparent:true,opacity:0.85}));
+  scene.add(tube);
+
+  // Ground plane
+  const gnd=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshPhongMaterial({color:0x1a2230,side:THREE.DoubleSide}));
+  gnd.rotation.x=Math.PI/2;gnd.position.y=5;scene.add(gnd);
+
+  // Formation plane at TVD
+  const maxTvd = Math.max(...data.filter(d=>d.tvd).map(d=>d.tvd));
+  if(maxTvd>0){
+    const fm=new THREE.Mesh(new THREE.PlaneGeometry(20000,20000),new THREE.MeshPhongMaterial({color:0x2a1a0a,side:THREE.DoubleSide,transparent:true,opacity:0.25}));
+    fm.rotation.x=Math.PI/2;fm.position.y=-maxTvd*sf;scene.add(fm);
+  }
+
+  // Perf clusters along lateral
+  for(let i=Math.floor(pts.length*0.55);i<pts.length;i+=3){
+    const cl=new THREE.Mesh(new THREE.SphereGeometry(8,6,6),new THREE.MeshPhongMaterial({color:0xff6633,transparent:true,opacity:0.6}));
+    cl.position.copy(pts[Math.min(i,pts.length-1)]);scene.add(cl);
+  }
+
+  // Casing at surface
+  const cas=new THREE.Mesh(new THREE.CylinderGeometry(25,25,80,12),new THREE.MeshPhongMaterial({color:0x888888,emissive:0x222222}));
+  cas.position.set(pts[0].x,pts[0].y-40,pts[0].z);scene.add(cas);
+
+  // Lighting
+  scene.add(new THREE.AmbientLight(0x445566,0.8));
+  const dl=new THREE.DirectionalLight(0xffffff,0.7);dl.position.set(2000,3000,1000);scene.add(dl);
+  const pl=new THREE.PointLight(new THREE.Color(w.color),0.4,15000);
+  pl.position.copy(pts[Math.floor(pts.length*0.7)]);scene.add(pl);
+
+  // Camera orbit
+  const ctr=new THREE.Vector3(),box=new THREE.Box3().setFromObject(tube);box.getCenter(ctr);
+  const sz=box.getSize(new THREE.Vector3()).length();
+  let aH=-0.6,aV=0.4,dst=sz*1.5,isDr=false,pmx,pmy;
+  function uC(){cam.position.set(ctr.x+dst*Math.sin(aH)*Math.cos(aV),ctr.y+dst*Math.sin(aV),ctr.z+dst*Math.cos(aH)*Math.cos(aV));cam.lookAt(ctr);}
+  uC();
+  ren.domElement.addEventListener('mousedown',e=>{isDr=true;pmx=e.clientX;pmy=e.clientY;e.stopPropagation();});
+  ren.domElement.addEventListener('mousemove',e=>{if(!isDr)return;aH+=(e.clientX-pmx)*0.005;aV=Math.max(-1.2,Math.min(1.2,aV+(e.clientY-pmy)*0.005));pmx=e.clientX;pmy=e.clientY;uC();e.stopPropagation();});
+  ren.domElement.addEventListener('mouseup',()=>isDr=false);
+  ren.domElement.addEventListener('wheel',e=>{dst=Math.max(sz*0.5,Math.min(sz*4,dst+e.deltaY*2));uC();e.stopPropagation();e.preventDefault();},{passive:false});
+  (function a(){if(!document.getElementById('dv')?.contains(ren.domElement))return;requestAnimationFrame(a);if(!isDr){aH+=0.003;uC();}ren.render(scene,cam);})();
+  el.insertAdjacentHTML('afterbegin',`<div class="dl">${w.hasSurvey?'REAL NDIC SURVEY':'ESTIMATED'} / DRAG TO ROTATE</div>`);
+}
+
+function renderST(w){const data=getDD(w),tbl=document.getElementById('svtbl');
+let h='<thead><tr><th>MD (ft)</th><th>TVD (ft)</th><th>Inc (°)</th><th>Azi (°)</th><th>NS (ft)</th><th>EW (ft)</th></tr></thead><tbody>';
+const step=Math.max(1,Math.floor(data.length/20));
+for(let i=0;i<data.length;i+=step){const d=data[i];h+=`<tr><td>${(d.md||0).toLocaleString()}</td><td>${(d.tvd||0).toLocaleString()}</td><td>${d.inc!=null?Number(d.inc).toFixed(1):'—'}</td><td>${d.azi!=null?Number(d.azi).toFixed(1):'—'}</td><td>${d.x!=null?Math.round(d.x).toLocaleString():'—'}</td><td>${d.y!=null?Math.round(d.y).toLocaleString():'—'}</td></tr>`;}
+tbl.innerHTML=h+'</tbody>';}
 
 let pCI=null;function renderPC(w){if(pCI)pCI.destroy();const mo=[],oD=[],gD=[],wD=[],nm=Math.min(120,(2026-(w.yearDrilled||2020))*12),sd=new Date(w.yearDrilled||2020,6,1),qi=800+Math.random()*1400;for(let m=0;m<nm;m++){const d=new Date(sd);d.setMonth(d.getMonth()+m);mo.push(d.toLocaleDateString('en-US',{year:'2-digit',month:'short'}));const oil=Math.max(20,qi/Math.pow(1+1.3*0.08*m,1/1.3)+(Math.random()-.5)*30);oD.push(Math.round(oil));gD.push(Math.round(oil*(0.8+Math.random()*0.6)));wD.push(Math.round(oil*(0.1+m*0.02+Math.random()*0.3)));}pCI=new Chart(document.getElementById('pch'),{type:'line',data:{labels:mo,datasets:[{label:'Oil (bbl/d)',data:oD,borderColor:'#2dd47a',backgroundColor:'rgba(45,212,122,0.08)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},{label:'Gas (mcf/d)',data:gD,borderColor:'#4da6ff',backgroundColor:'rgba(77,166,255,0.05)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3},{label:'Water (bbl/d)',data:wD,borderColor:'#f0a030',backgroundColor:'rgba(240,160,48,0.05)',fill:true,borderWidth:1.5,pointRadius:0,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{labels:{color:'#5a6d80',font:{size:9,family:'JetBrains Mono'},boxWidth:10,boxHeight:2}},tooltip:{backgroundColor:'rgba(17,24,32,0.95)',bodyFont:{family:'JetBrains Mono',size:10}}},scales:{x:{ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'},maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.03)'}},y:{ticks:{color:'#5a6d80',font:{size:8,family:'JetBrains Mono'}},grid:{color:'rgba(255,255,255,0.04)'}}}}});}
 
